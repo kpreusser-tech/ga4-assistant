@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GA4 Analysis Assistant</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a1a; height: 100vh; display: flex; flex-direction: column; }
+
+.header { background: #1a1a1a; color: #fff; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.header-left h1 { font-size: 16px; font-weight: 500; }
+.header-left p { font-size: 12px; color: #888; margin-top: 2px; }
+.status { font-size: 12px; color: #aaa; display: flex; align-items: center; gap: 6px; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #4caf50; }
+
+/* Setup */
+.setup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.setup-box { background: #fff; border-radius: 14px; padding: 32px; width: 480px; max-width: 95vw; }
+.setup-box h2 { font-size: 18px; font-weight: 500; margin-bottom: 6px; }
+.setup-box p { font-size: 13px; color: #666; margin-bottom: 20px; line-height: 1.5; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12px; font-weight: 500; color: #555; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; }
+.field input, .field textarea { width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; font-family: monospace; background: #fafafa; }
+.field input:focus, .field textarea:focus { outline: none; border-color: #1a1a1a; background: #fff; }
+.field textarea { height: 90px; resize: vertical; }
+.mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+.mode-btn { flex: 1; padding: 8px; border-radius: 7px; font-size: 13px; cursor: pointer; transition: all 0.15s; border: 1px solid #ddd; background: #fff; color: #555; }
+.mode-btn.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+.connect-btn { width: 100%; padding: 11px; background: #1a1a1a; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+.connect-btn:hover { opacity: 0.85; }
+.err { background: #fff0f0; border: 1px solid #fcc; color: #c33; border-radius: 7px; padding: 10px 12px; font-size: 12px; margin-top: 10px; display: none; }
+
+/* Chat area */
+.chat-area { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.message { max-width: 800px; width: 100%; }
+.message.user { align-self: flex-end; }
+.message.assistant { align-self: flex-start; }
+.bubble { padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.6; }
+.user .bubble { background: #1a1a1a; color: #fff; border-radius: 12px 12px 2px 12px; }
+.assistant .bubble { background: #fff; border: 1px solid #e8e8e8; border-radius: 12px 12px 12px 2px; }
+.assistant .bubble h3 { font-size: 13px; font-weight: 600; margin: 12px 0 6px; color: #1a1a1a; }
+.assistant .bubble h3:first-child { margin-top: 0; }
+.assistant .bubble p { margin-bottom: 8px; }
+.assistant .bubble p:last-child { margin-bottom: 0; }
+.assistant .bubble ul { padding-left: 18px; margin-bottom: 8px; }
+.assistant .bubble li { margin-bottom: 4px; }
+.assistant .bubble table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+.assistant .bubble th { text-align: left; font-size: 11px; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.4px; padding: 0 0 6px; border-bottom: 1px solid #eee; }
+.assistant .bubble td { padding: 7px 0; border-bottom: 1px solid #f5f5f5; color: #333; }
+.assistant .bubble tr:last-child td { border-bottom: none; }
+.thinking { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #fff; border: 1px solid #e8e8e8; border-radius: 12px 12px 12px 2px; font-size: 13px; color: #888; }
+.dots span { animation: blink 1.2s infinite; display: inline-block; }
+.dots span:nth-child(2) { animation-delay: 0.2s; }
+.dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
+
+/* Suggestions */
+.suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 24px 12px; }
+.suggestion { padding: 7px 14px; background: #fff; border: 1px solid #ddd; border-radius: 20px; font-size: 12px; color: #444; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.suggestion:hover { border-color: #1a1a1a; color: #1a1a1a; }
+
+/* Input */
+.input-area { padding: 12px 24px 20px; flex-shrink: 0; }
+.input-row { display: flex; gap: 10px; background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 8px 8px 8px 16px; align-items: flex-end; transition: border-color 0.15s; }
+.input-row:focus-within { border-color: #1a1a1a; }
+.input-row textarea { flex: 1; border: none; outline: none; font-size: 14px; font-family: inherit; resize: none; min-height: 24px; max-height: 120px; line-height: 1.5; background: transparent; }
+.send-btn { width: 36px; height: 36px; background: #1a1a1a; color: #fff; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: opacity 0.15s; }
+.send-btn:hover { opacity: 0.8; }
+.send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.send-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.bar-label { font-size: 12px; color: #444; width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.bar-track { flex: 1; height: 6px; background: #f0f0f0; border-radius: 3px; }
+.bar-fill { height: 100%; background: #1a1a1a; border-radius: 3px; }
+.bar-val { font-size: 12px; color: #888; width: 50px; text-align: right; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="setup-overlay" id="setup">
+  <div class="setup-box">
+    <h2>GA4 Analysis Assistant</h2>
+    <p>Connect your GA4 property to start asking questions about your analytics data in plain English.</p>
+    <div class="field">
+      <label>Property ID</label>
+      <input type="text" id="prop-id" value="312495722" placeholder="e.g. 312495722" />
+    </div>
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="btn-token" onclick="setMode('token')">OAuth Token</button>
+      <button class="mode-btn" id="btn-json" onclick="setMode('json')">Service Account JSON</button>
+    </div>
+    <div id="token-field" class="field">
+      <label>Access Token</label>
+      <textarea id="token-val" placeholder="Paste your ya29.a... token from OAuth Playground"></textarea>
+    </div>
+    <div id="json-field" class="field" style="display:none">
+      <label>Service Account JSON</label>
+      <textarea id="json-val" placeholder='Paste your service account JSON key file contents'></textarea>
+    </div>
+    <button class="connect-btn" onclick="connect()">Connect →</button>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <h1>GA4 Analysis Assistant</h1>
+    <p id="prop-label">Not connected</p>
+  </div>
+  <div class="status"><div class="dot" id="status-dot" style="background:#888"></div><span id="status-text">Disconnected</span></div>
+</div>
+
+<div class="chat-area" id="chat">
+  <div class="message assistant">
+    <div class="bubble">
+      <p>👋 Hi! I'm your GA4 Analysis Assistant for the Fender B2B Dealer Portal. Once you connect, you can ask me questions like:</p>
+      <ul>
+        <li>"What are the most popular search terms and where do users go after?"</li>
+        <li>"Which pages have the highest bounce rate?"</li>
+        <li>"How has traffic changed over the last 90 days?"</li>
+        <li>"What are the top entry pages for new users?"</li>
+      </ul>
+      <p style="margin-top:8px;color:#888;font-size:13px;">Connect your GA4 property to get started.</p>
+    </div>
+  </div>
+</div>
+
+<div class="suggestions" id="suggestions">
+  <div class="suggestion" onclick="ask(this.textContent)">Top search terms this month</div>
+  <div class="suggestion" onclick="ask(this.textContent)">Pages with highest bounce rate</div>
+  <div class="suggestion" onclick="ask(this.textContent)">Traffic trends last 90 days</div>
+  <div class="suggestion" onclick="ask(this.textContent)">Top entry pages for new users</div>
+  <div class="suggestion" onclick="ask(this.textContent)">Which channels drive the most sessions?</div>
+</div>
+
+<div class="input-area">
+  <div class="input-row">
+    <textarea id="user-input" placeholder="Ask anything about your GA4 data..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="send-btn" onclick="sendMessage()">
+      <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+let authMode = 'token';
+let accessToken = null;
+let propertyId = '312495722';
+let isLoading = false;
+let creds = null;
+let conversationHistory = [];
+
+function setMode(m) {
+  authMode = m;
+  document.getElementById('token-field').style.display = m === 'token' ? 'block' : 'none';
+  document.getElementById('json-field').style.display = m === 'json' ? 'block' : 'none';
+  document.getElementById('btn-token').className = 'mode-btn' + (m === 'token' ? ' active' : '');
+  document.getElementById('btn-json').className = 'mode-btn' + (m === 'json' ? ' active' : '');
+}
+
+async function connect() {
+  const err = document.getElementById('err');
+  err.style.display = 'none';
+  propertyId = document.getElementById('prop-id').value.trim();
+  if (!propertyId) { err.textContent = 'Enter a property ID.'; err.style.display = 'block'; return; }
+
+  if (authMode === 'token') {
+    const t = document.getElementById('token-val').value.trim();
+    if (!t) { err.textContent = 'Paste your access token.'; err.style.display = 'block'; return; }
+    accessToken = t;
+  } else {
+    const j = document.getElementById('json-val').value.trim();
+    if (!j) { err.textContent = 'Paste your service account JSON.'; err.style.display = 'block'; return; }
+    try { creds = JSON.parse(j); } catch(e) { err.textContent = 'Invalid JSON.'; err.style.display = 'block'; return; }
+    try { accessToken = await getAccessToken(); } catch(e) { err.textContent = e.message; err.style.display = 'block'; return; }
+  }
+
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('prop-label').textContent = 'Property ' + propertyId;
+  document.getElementById('status-dot').style.background = '#4caf50';
+  document.getElementById('status-text').textContent = 'Connected';
+  addMessage('assistant', "Connected! I can now query your GA4 data. What would you like to analyze?");
+}
+
+async function getAccessToken() {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const claim = { iss: creds.client_email, scope: 'https://www.googleapis.com/auth/analytics.readonly', aud: 'https://oauth2.googleapis.com/token', exp: now + 3600, iat: now };
+  const b64 = s => btoa(unescape(encodeURIComponent(JSON.stringify(s)))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const sigInput = b64(header) + '.' + b64(claim);
+  const pemContents = creds.private_key.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\n/g, '');
+  const binaryDer = Uint8Array.from(atob(pemContents), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('pkcs8', binaryDer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(sigInput));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const jwt = sigInput + '.' + sigB64;
+  const resp = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}` });
+  const data = await resp.json();
+  if (!data.access_token) throw new Error(data.error_description || 'Auth failed');
+  return data.access_token;
+}
+
+async function ga4Report(body) {
+  if (authMode !== 'token') accessToken = await getAccessToken();
+  const resp = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error.message);
+  return data;
+}
+
+function fmt(n) { return Number(n).toLocaleString(); }
+
+async function fetchGA4DataForQuery(question) {
+  const q = question.toLowerCase();
+  const results = {};
+  const apiErrors = [];
+
+  // Always fetch top pages and events as baseline
+  try {
+    const r = await ga4Report({
+      dateRanges: [{ startDate: '90daysAgo', endDate: 'today' }],
+      dimensions: [{ name: 'pagePath' }],
+      metrics: [{ name: 'screenPageViews' }, { name: 'activeUsers' }, { name: 'bounceRate' }],
+      orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+      limit: 20
+    });
+    results.topPages = r.rows || [];
+  } catch(e) { apiErrors.push('topPages: ' + e.message); }
+
+  // Search terms analysis
+  if (q.includes('search') || q.includes('query') || q.includes('term') || q.includes('path')) {
+    try {
+      const r = await ga4Report({
+        dateRanges: [{ startDate: '90daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'searchTerm' }],
+        metrics: [{ name: 'sessions' }, { name: 'screenPageViews' }, { name: 'bounceRate' }],
+        orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+        limit: 20
+      });
+      results.searchTerms = r.rows || [];
+    } catch(e) { apiErrors.push('searchTerms: ' + e.message); }
+
+    // Pages that contain "search" in path
+    try {
+      const r2 = await ga4Report({
+        dateRanges: [{ startDate: '90daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'pagePath' }],
+        metrics: [{ name: 'screenPageViews' }, { name: 'activeUsers' }, { name: 'bounceRate' }],
+        orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+        limit: 20,
+        dimensionFilter: { filter: { fieldName: 'pagePath', stringFilter: { matchType: 'CONTAINS', value: 'search' } } }
+      });
+      results.searchPages = r2.rows || [];
+    } catch(e) { apiErrors.push('searchPages: ' + e.message); }
+
+    // Search-related events
+    try {
+      const r3 = await ga4Report({
+        dateRanges: [{ startDate: '90daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'eventName' }],
+        metrics: [{ name: 'eventCount' }, { name: 'sessions' }],
+        orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+        limit: 20,
+        dimensionFilter: { filter: { fieldName: 'eventName', stringFilter: { matchType: 'CONTAINS', value: 'search' } } }
+      });
+      results.searchEvents = r3.rows || [];
+    } catch(e) { apiErrors.push('searchEvents: ' + e.message); }
+  }
+
+  // Bounce rate analysis
+  if (q.includes('bounce')) {
+    try {
+      const r = await ga4Report({
+        dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'pagePath' }],
+        metrics: [{ name: 'bounceRate' }, { name: 'sessions' }, { name: 'screenPageViews' }],
+        orderBys: [{ metric: { metricName: 'bounceRate' }, desc: true }],
+        limit: 15
+      });
+      results.bouncePages = r.rows || [];
+    } catch(e) {}
+  }
+
+  // Traffic trends
+  if (q.includes('trend') || q.includes('traffic') || q.includes('over time') || q.includes('90') || q.includes('month')) {
+    try {
+      const r = await ga4Report({
+        dateRanges: [{ startDate: '90daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'yearMonth' }],
+        metrics: [{ name: 'sessions' }, { name: 'activeUsers' }, { name: 'newUsers' }],
+        orderBys: [{ dimension: { dimensionName: 'yearMonth' } }]
+      });
+      results.trends = r.rows || [];
+    } catch(e) {}
+  }
+
+  // Entry pages / landing pages
+  if (q.includes('entry') || q.includes('landing') || q.includes('new user') || q.includes('first')) {
+    try {
+      const r = await ga4Report({
+        dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'landingPage' }],
+        metrics: [{ name: 'sessions' }, { name: 'newUsers' }, { name: 'bounceRate' }],
+        orderBys: [{ metric: { metricName: 'newUsers' }, desc: true }],
+        limit: 15
+      });
+      results.landingPages = r.rows || [];
+    } catch(e) {}
+  }
+
+  // Channels
+  if (q.includes('channel') || q.includes('source') || q.includes('medium') || q.includes('drive')) {
+    try {
+      const r = await ga4Report({
+        dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'sessionDefaultChannelGroup' }],
+        metrics: [{ name: 'sessions' }, { name: 'activeUsers' }, { name: 'bounceRate' }],
+        orderBys: [{ metric: { metricName: 'sessions' }, desc: true }]
+      });
+      results.channels = r.rows || [];
+    } catch(e) {}
+  }
+
+  // Top pages (general)
+  if (q.includes('page') || q.includes('popular') || q.includes('top') || Object.keys(results).length === 0) {
+    try {
+      const r = await ga4Report({
+        dateRanges: [{ startDate: '30daysAgo', endDate: 'today' }],
+        dimensions: [{ name: 'pagePath' }],
+        metrics: [{ name: 'screenPageViews' }, { name: 'activeUsers' }, { name: 'bounceRate' }],
+        orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+        limit: 15
+      });
+      results.topPages = r.rows || [];
+    } catch(e) {}
+  }
+
+  results._errors = apiErrors;
+  return results;
+}
+
+function formatDataForClaude(data) {
+  let text = '';
+  if (data._errors?.length) {
+    text += 'API ERRORS ENCOUNTERED:\n';
+    data._errors.forEach(e => text += `- ${e}\n`);
+    text += '\n';
+  }
+  if (data.searchTerms?.length) {
+    text += 'TOP SEARCH TERMS (last 90 days):\n';
+    data.searchTerms.slice(0, 15).forEach(r => {
+      text += `- "${r.dimensionValues[0].value}": ${r.metricValues[0].value} sessions, bounce rate ${(parseFloat(r.metricValues[2].value)*100).toFixed(1)}%\n`;
+    });
+  }
+  if (data.searchPages?.length) {
+    text += '\nPAGES WITH "search" IN URL:\n';
+    data.searchPages.slice(0, 10).forEach(r => {
+      text += `- ${r.dimensionValues[0].value}: ${r.metricValues[0].value} views, ${r.metricValues[1].value} users, ${(parseFloat(r.metricValues[2].value)*100).toFixed(1)}% bounce\n`;
+    });
+  }
+  if (data.searchEvents?.length) {
+    text += '\nSEARCH-RELATED EVENTS:\n';
+    data.searchEvents.forEach(r => {
+      text += `- ${r.dimensionValues[0].value}: ${r.metricValues[0].value} events\n`;
+    });
+  }
+  if (data.bouncePages?.length) {
+    text += 'HIGH BOUNCE RATE PAGES:\n';
+    data.bouncePages.slice(0, 10).forEach(r => {
+      text += `- ${r.dimensionValues[0].value}: ${(parseFloat(r.metricValues[0].value)*100).toFixed(1)}% bounce, ${r.metricValues[1].value} sessions\n`;
+    });
+  }
+  if (data.trends?.length) {
+    text += 'MONTHLY TRAFFIC TRENDS:\n';
+    data.trends.forEach(r => {
+      const ym = r.dimensionValues[0].value;
+      const month = ym.slice(0,4) + '-' + ym.slice(4);
+      text += `- ${month}: ${r.metricValues[0].value} sessions, ${r.metricValues[1].value} active users, ${r.metricValues[2].value} new users\n`;
+    });
+  }
+  if (data.landingPages?.length) {
+    text += 'TOP LANDING PAGES:\n';
+    data.landingPages.slice(0, 10).forEach(r => {
+      text += `- ${r.dimensionValues[0].value}: ${r.metricValues[1].value} new users, ${(parseFloat(r.metricValues[2].value)*100).toFixed(1)}% bounce\n`;
+    });
+  }
+  if (data.channels?.length) {
+    text += 'TRAFFIC BY CHANNEL:\n';
+    data.channels.forEach(r => {
+      text += `- ${r.dimensionValues[0].value}: ${r.metricValues[0].value} sessions, ${(parseFloat(r.metricValues[2].value)*100).toFixed(1)}% bounce\n`;
+    });
+  }
+  if (data.topPages?.length) {
+    text += 'TOP PAGES:\n';
+    data.topPages.slice(0, 10).forEach(r => {
+      text += `- ${r.dimensionValues[0].value}: ${r.metricValues[0].value} views, ${r.metricValues[1].value} users\n`;
+    });
+  }
+  return text || 'No data available.';
+}
+
+async function callClaude(question, ga4Data) {
+  const systemPrompt = `You are a GA4 analytics expert analyzing the Fender B2B Dealer Portal (New B2B Fender - GA4, property 312495722). 
+Real GA4 data has been fetched directly from the GA4 API and is provided below. IMPORTANT: You are the system doing the fetching and analysis. Never suggest the user contact a developer or check a pipeline — you are the pipeline. If data is missing or empty, explain what that means and what alternative data IS available. Always analyze whatever data was successfully retrieved.
+
+When analyzing search terms and user paths, focus on:
+- Whether the pages users land on after searching match their likely intent
+- Patterns that suggest search results are working well or poorly
+- Specific recommendations for improving search relevance
+
+Be concise but insightful. Use specific numbers from the data. Format your response with clear sections using ### headings where appropriate. Keep tables simple.`;
+
+  const userMessage = `Question: ${question}
+
+GA4 Data:
+${ga4Data}
+
+Please analyze this data and answer the question with specific insights and recommendations.`;
+
+  conversationHistory.push({ role: 'user', content: userMessage });
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: conversationHistory
+    })
+  });
+
+  const data = await response.json();
+  const reply = data.content?.[0]?.text || 'Sorry, I could not generate a response.';
+  conversationHistory.push({ role: 'assistant', content: reply });
+  // Keep history manageable
+  if (conversationHistory.length > 20) conversationHistory = conversationHistory.slice(-20);
+  return reply;
+}
+
+function renderMarkdown(text) {
+  return text
+    .replace(/### (.+)/g, '<h3>$1</h3>')
+    .replace(/## (.+)/g, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.+?)`/g, '<code style="background:#f5f5f5;padding:1px 4px;border-radius:3px;font-size:12px;">$1</code>')
+    .replace(/^- (.+)/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^(?!<[hul])/gm, '')
+    .replace(/\n/g, '<br>');
+}
+
+function addMessage(role, text, isThinking = false) {
+  const chat = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+  if (isThinking) {
+    div.id = 'thinking-msg';
+    div.innerHTML = `<div class="thinking">Fetching GA4 data and analyzing<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+  } else {
+    div.innerHTML = `<div class="bubble">${role === 'user' ? text : renderMarkdown(text)}</div>`;
+  }
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function removeThinking() {
+  const t = document.getElementById('thinking-msg');
+  if (t) t.remove();
+}
+
+async function sendMessage() {
+  if (isLoading || !accessToken) return;
+  const input = document.getElementById('user-input');
+  const text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  autoResize(input);
+  addMessage('user', text);
+  addMessage('assistant', '', true);
+  isLoading = true;
+  document.getElementById('send-btn').disabled = true;
+
+  try {
+    const ga4Data = await fetchGA4DataForQuery(text);
+    const formatted = formatDataForClaude(ga4Data);
+    const reply = await callClaude(text, formatted);
+    removeThinking();
+    addMessage('assistant', reply);
+  } catch(e) {
+    removeThinking();
+    addMessage('assistant', `Sorry, I ran into an error: ${e.message}. Your token may have expired — get a fresh one from the OAuth Playground.`);
+  }
+
+  isLoading = false;
+  document.getElementById('send-btn').disabled = false;
+}
+
+function ask(text) {
+  if (!accessToken) return;
+  document.getElementById('user-input').value = text;
+  sendMessage();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+</script>
+</body>
+</html>
