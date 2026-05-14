@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fender GA4 Agent</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f0; color: #1a1a1a; min-height: 100vh; }
+
+.header { background: #1a1a1a; color: #fff; padding: 18px 28px; display: flex; align-items: center; justify-content: space-between; }
+.header h1 { font-size: 16px; font-weight: 500; }
+.header .sub { font-size: 12px; color: #888; margin-top: 2px; }
+.status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #aaa; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #888; }
+
+.setup-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.setup-box { background: #fff; border-radius: 14px; padding: 32px; width: 460px; max-width: 95vw; }
+.setup-box h2 { font-size: 18px; font-weight: 500; margin-bottom: 6px; }
+.setup-box p { font-size: 13px; color: #666; margin-bottom: 22px; line-height: 1.55; }
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 11px; font-weight: 500; color: #555; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; }
+.field input, .field textarea { width: 100%; padding: 9px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 13px; font-family: monospace; background: #fafafa; }
+.field input:focus, .field textarea:focus { outline: none; border-color: #1a1a1a; background: #fff; }
+.field textarea { height: 80px; resize: none; }
+.connect-btn { width: 100%; padding: 11px; background: #1a1a1a; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; }
+.connect-btn:hover { opacity: 0.85; }
+.err { background: #fff0f0; border: 1px solid #fcc; color: #c33; border-radius: 7px; padding: 10px; font-size: 12px; margin-top: 10px; display: none; }
+
+.main { max-width: 860px; margin: 0 auto; padding: 28px 24px; }
+
+.goal-card { background: #fff; border-radius: 12px; border: 1px solid #e8e8e8; padding: 24px; margin-bottom: 24px; }
+.goal-card h2 { font-size: 15px; font-weight: 500; margin-bottom: 16px; color: #1a1a1a; }
+.goal-input { width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; font-family: inherit; margin-bottom: 12px; }
+.goal-input:focus { outline: none; border-color: #1a1a1a; }
+.goal-examples { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.example { padding: 6px 14px; border: 1px solid #ddd; border-radius: 20px; font-size: 12px; color: #555; cursor: pointer; background: #fafafa; transition: all 0.15s; }
+.example:hover { border-color: #1a1a1a; color: #1a1a1a; background: #fff; }
+.run-btn { width: 100%; padding: 12px; background: #1a1a1a; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity 0.15s; }
+.run-btn:hover { opacity: 0.85; }
+.run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.progress-card { background: #fff; border-radius: 12px; border: 1px solid #e8e8e8; padding: 24px; margin-bottom: 24px; display: none; }
+.progress-card h3 { font-size: 13px; font-weight: 500; color: #888; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+.steps { display: flex; flex-direction: column; gap: 10px; }
+.step { display: flex; align-items: center; gap: 12px; font-size: 13px; color: #888; }
+.step-icon { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #ddd; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px; }
+.step.done .step-icon { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+.step.active .step-icon { border-color: #1a1a1a; }
+.step.active .step-label { color: #1a1a1a; font-weight: 500; }
+.step.done .step-label { color: #555; }
+.spinner { width: 14px; height: 14px; border: 2px solid #ddd; border-top-color: #1a1a1a; border-radius: 50%; animation: spin 0.6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.result-card { background: #fff; border-radius: 12px; border: 1px solid #e8e8e8; padding: 24px; margin-bottom: 24px; display: none; }
+.result-card h3 { font-size: 13px; font-weight: 500; color: #888; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+.data-preview { background: #f8f8f6; border-radius: 8px; padding: 14px; font-size: 11px; font-family: monospace; line-height: 1.6; color: #555; max-height: 200px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 16px; }
+.send-claude-btn { width: 100%; padding: 12px; background: #1a1a1a; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.send-claude-btn:hover { opacity: 0.85; }
+.send-note { font-size: 12px; color: #888; text-align: center; margin-top: 10px; }
+
+.token-bar { background: #fff8e1; border: 1px solid #ffe082; border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #795548; display: none; align-items: center; justify-content: space-between; gap: 12px; }
+.token-bar button { padding: 6px 14px; background: #1a1a1a; color: #fff; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.token-input-row { display: flex; gap: 8px; margin-top: 8px; }
+.token-input-row input { flex: 1; padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 12px; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<div class="setup-overlay" id="setup">
+  <div class="setup-box">
+    <h2>Fender GA4 Agent</h2>
+    <p>This tool autonomously analyzes your GA4 data and sends a structured report to Claude for deep analysis. Connect with your OAuth token to get started.</p>
+    <div class="field">
+      <label>Property ID</label>
+      <input type="text" id="prop-id" value="312495722" />
+    </div>
+    <div class="field">
+      <label>OAuth Token (from OAuth Playground)</label>
+      <textarea id="token-val" placeholder="Paste your ya29.a... token"></textarea>
+    </div>
+    <button class="connect-btn" onclick="connect()">Connect →</button>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<div class="header">
+  <div>
+    <h1>Fender GA4 Agent</h1>
+    <div class="sub" id="prop-label">Not connected</div>
+  </div>
+  <div class="status"><div class="dot" id="dot"></div><span id="status-txt">Disconnected</span></div>
+</div>
+
+<div class="main">
+
+  <div class="token-bar" id="token-bar">
+    <span>⚠️ Token expired or invalid. Paste a new one:</span>
+    <div style="flex:1;">
+      <div class="token-input-row">
+        <input type="text" id="new-token" placeholder="ya29.a..." />
+        <button onclick="updateToken()">Update</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="goal-card">
+    <h2>What would you like to analyze?</h2>
+    <input type="text" class="goal-input" id="goal-input" placeholder="e.g. Analyze whether our search results are returning relevant products for dealers" onkeydown="if(event.key==='Enter')runAgent()" />
+    <div class="goal-examples">
+      <div class="example" onclick="setGoal(this.textContent)">Are our search results relevant to what dealers are looking for?</div>
+      <div class="example" onclick="setGoal(this.textContent)">Why are some pages losing users — find friction points</div>
+      <div class="example" onclick="setGoal(this.textContent)">How is overall portal health trending over time?</div>
+      <div class="example" onclick="setGoal(this.textContent)">Which dealer workflows are most and least used?</div>
+      <div class="example" onclick="setGoal(this.textContent)">Where are new dealers dropping off in their first sessions?</div>
+      <div class="example" onclick="setGoal(this.textContent)">What products are dealers searching for most that we should prioritize?</div>
+    </div>
+    <button class="run-btn" id="run-btn" onclick="runAgent()">Run Analysis ↗</button>
+  </div>
+
+  <div class="progress-card" id="progress-card">
+    <h3>Agent running</h3>
+    <div class="steps" id="steps-list"></div>
+  </div>
+
+  <div class="result-card" id="result-card">
+    <h3>Data collected — ready for Claude</h3>
+    <div class="data-preview" id="data-preview"></div>
+    <button class="send-claude-btn" id="send-btn" onclick="sendToClaude()">
+      <span>Open Claude and send for analysis ↗</span>
+    </button>
+    <div class="send-note">This will open Claude.ai in a new tab with your data and goal pre-loaded for analysis.</div>
+  </div>
+
+</div>
+
+<script>
+let token = null, propId = '312495722', collectedData = '', currentGoal = '';
+
+function connect() {
+  const t = document.getElementById('token-val').value.trim();
+  const p = document.getElementById('prop-id').value.trim();
+  const err = document.getElementById('err');
+  err.style.display = 'none';
+  if (!t) { err.textContent = 'Paste your OAuth token.'; err.style.display = 'block'; return; }
+  if (!p) { err.textContent = 'Enter a property ID.'; err.style.display = 'block'; return; }
+  token = t; propId = p;
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('dot').style.background = '#4caf50';
+  document.getElementById('status-txt').textContent = 'Connected';
+  document.getElementById('prop-label').textContent = 'Property ' + propId + ' · New B2B Fender - GA4';
+}
+
+function updateToken() {
+  const t = document.getElementById('new-token').value.trim();
+  if (!t) return;
+  token = t;
+  document.getElementById('token-bar').style.display = 'none';
+  document.getElementById('dot').style.background = '#4caf50';
+  document.getElementById('status-txt').textContent = 'Connected';
+}
+
+function setGoal(text) {
+  document.getElementById('goal-input').value = text;
+}
+
+async function ga4(body) {
+  const r = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propId}:runReport`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const d = await r.json();
+  if (d.error) {
+    if (d.error.code === 401) throw new Error('TOKEN_EXPIRED');
+    throw new Error(d.error.message);
+  }
+  return d;
+}
+
+function fmt(n) { return Number(n).toLocaleString(); }
+function pct(v) { return (parseFloat(v)*100).toFixed(1) + '%'; }
+
+function addStep(label) {
+  const list = document.getElementById('steps-list');
+  const div = document.createElement('div');
+  div.className = 'step active';
+  div.id = 'step-' + list.children.length;
+  div.innerHTML = `<div class="step-icon"><div class="spinner"></div></div><span class="step-label">${label}</span>`;
+  list.appendChild(div);
+  return div;
+}
+
+function completeStep(div, result) {
+  div.className = 'step done';
+  div.querySelector('.step-icon').innerHTML = '✓';
+  if (result) div.querySelector('.step-label').textContent += ' — ' + result;
+}
+
+function failStep(div, msg) {
+  div.className = 'step';
+  div.querySelector('.step-icon').innerHTML = '✗';
+  div.querySelector('.step-icon').style.borderColor = '#fcc';
+  div.querySelector('.step-label').textContent += ' (skipped: ' + msg + ')';
+}
+
+async function runAgent() {
+  if (!token) return;
+  const goal = document.getElementById('goal-input').value.trim();
+  if (!goal) { document.getElementById('goal-input').focus(); return; }
+  currentGoal = goal;
+
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('progress-card').style.display = 'block';
+  document.getElementById('result-card').style.display = 'none';
+  document.getElementById('steps-list').innerHTML = '';
+  document.getElementById('token-bar').style.display = 'none';
+  collectedData = `GOAL: ${goal}\nPROPERTY: New B2B Fender - GA4 (${propId})\nDATE FETCHED: ${new Date().toLocaleDateString()}\n\n`;
+
+  try {
+    // Step 1: Overview metrics
+    const s1 = addStep('Fetching overall portal metrics');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'},{startDate:'180daysAgo',endDate:'91daysAgo'}], metrics:[{name:'sessions'},{name:'activeUsers'},{name:'newUsers'},{name:'bounceRate'},{name:'screenPageViews'}] });
+      const cur = r.rows?.[0]?.metricValues || [];
+      const prev = r.rows?.[1]?.metricValues || [];
+      collectedData += `OVERALL METRICS (last 90 days vs prior 90 days):\n`;
+      const labels = ['Sessions','Active Users','New Users','Bounce Rate','Page Views'];
+      cur.forEach((m, i) => {
+        const c = parseFloat(m.value);
+        const p = parseFloat(prev[i]?.value || 0);
+        const delta = p > 0 ? ((c-p)/p*100).toFixed(1) + '%' : 'n/a';
+        const val = i === 3 ? pct(m.value) : fmt(m.value);
+        collectedData += `- ${labels[i]}: ${val} (${delta} vs prior period)\n`;
+      });
+      completeStep(s1, `${fmt(cur[0]?.value)} sessions`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s1, e.message); }
+
+    // Step 2: Monthly trends
+    const s2 = addStep('Analyzing traffic trends by month');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'yearMonth'}], metrics:[{name:'sessions'},{name:'activeUsers'},{name:'newUsers'}], orderBys:[{dimension:{dimensionName:'yearMonth'}}] });
+      collectedData += `\nMONTHLY TRENDS:\n`;
+      (r.rows||[]).forEach(row => {
+        const ym = row.dimensionValues[0].value;
+        collectedData += `- ${ym.slice(0,4)}-${ym.slice(4)}: ${fmt(row.metricValues[0].value)} sessions, ${fmt(row.metricValues[1].value)} active users, ${fmt(row.metricValues[2].value)} new users\n`;
+      });
+      completeStep(s2, `${r.rows?.length} months of data`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s2, e.message); }
+
+    // Step 3: Top pages
+    const s3 = addStep('Identifying top pages and engagement');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'pagePath'}], metrics:[{name:'screenPageViews'},{name:'activeUsers'},{name:'bounceRate'},{name:'userEngagementDuration'}], orderBys:[{metric:{metricName:'screenPageViews'},desc:true}], limit:20 });
+      collectedData += `\nTOP PAGES BY VIEWS:\n`;
+      (r.rows||[]).forEach(row => {
+        const engSec = parseFloat(row.metricValues[3].value);
+        const engMin = (engSec/60).toFixed(1);
+        collectedData += `- ${row.dimensionValues[0].value}: ${fmt(row.metricValues[0].value)} views, ${fmt(row.metricValues[1].value)} users, ${pct(row.metricValues[2].value)} bounce, ${engMin}min avg engagement\n`;
+      });
+      completeStep(s3, `${r.rows?.length} pages analyzed`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s3, e.message); }
+
+    // Step 4: Search terms
+    const s4 = addStep('Analyzing search behavior and terms');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'searchTerm'}], metrics:[{name:'sessions'},{name:'bounceRate'},{name:'screenPageViews'}], orderBys:[{metric:{metricName:'sessions'},desc:true}], limit:25 });
+      collectedData += `\nSEARCH TERMS (90 days):\n`;
+      (r.rows||[]).forEach(row => {
+        collectedData += `- "${row.dimensionValues[0].value}": ${fmt(row.metricValues[0].value)} sessions, ${pct(row.metricValues[1].value)} bounce, ${fmt(row.metricValues[2].value)} pages viewed\n`;
+      });
+      completeStep(s4, `${r.rows?.length} terms found`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s4, e.message); }
+
+    // Step 5: Search pages
+    const s5 = addStep('Mapping search result pages and drop-off');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'pagePath'}], metrics:[{name:'screenPageViews'},{name:'activeUsers'},{name:'bounceRate'},{name:'userEngagementDuration'}], orderBys:[{metric:{metricName:'screenPageViews'},desc:true}], limit:20, dimensionFilter:{filter:{fieldName:'pagePath',stringFilter:{matchType:'CONTAINS',value:'search'}}} });
+      collectedData += `\nSEARCH-RELATED PAGES:\n`;
+      (r.rows||[]).forEach(row => {
+        const engMin = (parseFloat(row.metricValues[3].value)/60).toFixed(1);
+        collectedData += `- ${row.dimensionValues[0].value}: ${fmt(row.metricValues[0].value)} views, ${fmt(row.metricValues[1].value)} users, ${pct(row.metricValues[2].value)} bounce, ${engMin}min engagement\n`;
+      });
+      completeStep(s5, `${r.rows?.length} search pages`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s5, e.message); }
+
+    // Step 6: Search events
+    const s6 = addStep('Counting search event volume');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'eventName'}], metrics:[{name:'eventCount'},{name:'sessions'}], orderBys:[{metric:{metricName:'eventCount'},desc:true}], limit:10, dimensionFilter:{filter:{fieldName:'eventName',stringFilter:{matchType:'CONTAINS',value:'search'}}} });
+      collectedData += `\nSEARCH EVENTS:\n`;
+      (r.rows||[]).forEach(row => collectedData += `- ${row.dimensionValues[0].value}: ${fmt(row.metricValues[0].value)} events in ${fmt(row.metricValues[1].value)} sessions\n`);
+      completeStep(s6, `${r.rows?.length} event types`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s6, e.message); }
+
+    // Step 7: Landing pages
+    const s7 = addStep('Checking new user entry points');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'landingPage'}], metrics:[{name:'sessions'},{name:'newUsers'},{name:'bounceRate'}], orderBys:[{metric:{metricName:'newUsers'},desc:true}], limit:15 });
+      collectedData += `\nTOP LANDING PAGES FOR NEW USERS:\n`;
+      (r.rows||[]).forEach(row => collectedData += `- ${row.dimensionValues[0].value}: ${fmt(row.metricValues[1].value)} new users, ${fmt(row.metricValues[0].value)} sessions, ${pct(row.metricValues[2].value)} bounce\n`);
+      completeStep(s7, `${r.rows?.length} landing pages`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s7, e.message); }
+
+    // Step 8: Traffic channels
+    const s8 = addStep('Breaking down traffic by channel');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'sessionDefaultChannelGroup'}], metrics:[{name:'sessions'},{name:'activeUsers'},{name:'bounceRate'},{name:'newUsers'}], orderBys:[{metric:{metricName:'sessions'},desc:true}] });
+      collectedData += `\nTRAFFIC BY CHANNEL:\n`;
+      (r.rows||[]).forEach(row => collectedData += `- ${row.dimensionValues[0].value}: ${fmt(row.metricValues[0].value)} sessions, ${fmt(row.metricValues[1].value)} active users, ${fmt(row.metricValues[3].value)} new users, ${pct(row.metricValues[2].value)} bounce\n`);
+      completeStep(s8, `${r.rows?.length} channels`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s8, e.message); }
+
+    // Step 9: High bounce pages
+    const s9 = addStep('Finding high-friction pages');
+    try {
+      const r = await ga4({ dateRanges:[{startDate:'90daysAgo',endDate:'today'}], dimensions:[{name:'pagePath'}], metrics:[{name:'bounceRate'},{name:'sessions'},{name:'screenPageViews'}], orderBys:[{metric:{metricName:'bounceRate'},desc:true}], limit:15, dimensionFilter:{filter:{fieldName:'sessions',numericFilter:{operation:'GREATER_THAN',value:{int64Value:'100'}}}} });
+      collectedData += `\nHIGH BOUNCE PAGES (min 100 sessions):\n`;
+      (r.rows||[]).forEach(row => collectedData += `- ${row.dimensionValues[0].value}: ${pct(row.metricValues[0].value)} bounce, ${fmt(row.metricValues[1].value)} sessions\n`);
+      completeStep(s9, `${r.rows?.length} friction pages found`);
+    } catch(e) { if(e.message==='TOKEN_EXPIRED') throw e; failStep(s9, e.message); }
+
+    // Done — show result
+    document.getElementById('data-preview').textContent = collectedData;
+    document.getElementById('result-card').style.display = 'block';
+    document.getElementById('progress-card').querySelector('h3').textContent = 'Analysis complete ✓';
+
+  } catch(e) {
+    if (e.message === 'TOKEN_EXPIRED') {
+      document.getElementById('dot').style.background = '#f59e0b';
+      document.getElementById('status-txt').textContent = 'Token expired';
+      document.getElementById('token-bar').style.display = 'flex';
+    }
+  }
+
+  document.getElementById('run-btn').disabled = false;
+}
+
+function sendToClaude() {
+  const prompt = `Please analyze this GA4 data for the Fender B2B Dealer Portal and provide a detailed agentic analysis.
+
+${collectedData}
+
+Please provide:
+1. A direct answer to the goal
+2. Key findings with specific numbers
+3. Patterns that stand out (good and bad)
+4. Prioritized recommendations (what to fix first and why)
+5. Any anomalies or surprises in the data`;
+
+  const encoded = encodeURIComponent(prompt);
+  const url = `https://claude.ai/new?q=${encoded}`;
+  window.open(url, '_blank');
+}
+</script>
+</body>
+</html>
